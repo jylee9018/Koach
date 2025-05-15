@@ -21,21 +21,21 @@ flowchart TD
 
     A[학습자 음성 입력] --> B1[음성 전처리]
 
-    B1 --> B2[Forced Alignment\n(단어/음소 정렬)]
-    B1 --> B3[음향 피처 추출\n(Pitch, Duration 등)]
-    B1 --> B4[음성 임베딩 추출\n(Wav2Vec2 / Whisper)]
+    B1 --> B2[Forced Alignment - 단어/음소 정렬]
+    B1 --> B3[음향 피처 추출 - Pitch, Duration 등]
+    B1 --> B4[음성 임베딩 추출 - Wav2Vec2 / Whisper]
 
     B2 --> C1[발음 오류 탐지]
     B3 --> C2[억양 및 강세 이상 탐지]
     B4 --> C3[원어민 발화와 유사도 분석]
 
-    C1 --> D[LLM 피드백 프롬프트 구성\n(분석 결과 통합)]
+    C1 --> D[LLM 피드백 프롬프트 구조 구성 - 분석 결과 통합]
     C2 --> D
     C3 --> D
 
-    D --> E[LLM 피드백 결과 생성\n(분석 기반 프롬프트)]
+    D --> E[LLM 피드백 결과 생성 - 분석 기반 프롬프트]
 
-    E --> F[UI 출력\n시각화 및 피드백 카드]
+    E --> F[UI 출력 - 시각화 및 피드백 카드]
 ```
 
 </details>
