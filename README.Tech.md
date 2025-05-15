@@ -1,4 +1,5 @@
 # ⚙️ Koach - 한국어 발음 교정 AI 코치: 기술 문서
+
 > Koach = Korean + Coach
 
 ---
@@ -37,6 +38,7 @@ flowchart TD
 
     E --> F["🖥️ UI 출력\n시각화 및 피드백 카드"]
 ```
+
 </details>
 
 <details>
@@ -213,11 +215,11 @@ pitch_values = pitch.selected_array['frequency']
 
 ---
 
-### 8. 예시 발화 검색 (RAG 기반)
+~~### 8. 예시 발화 검색 (RAG 기반)~~
 
-- 방식: 학습자 어절 임베딩 → 벡터 DB → 유사도 기반 검색
-- 기술: FAISS, Pinecone, Chroma
-- 목적: 유사한 원어민 발화 예시 제공 (Top-K 검색)
+~~- 방식: 학습자 어절 임베딩 → 벡터 DB → 유사도 기반 검색~~
+~~- 기술: FAISS, Pinecone, Chroma~~
+~~- 목적: 유사한 원어민 발화 예시 제공 (Top-K 검색)~~
 
 ---
 
