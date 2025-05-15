@@ -14,28 +14,69 @@ LLM(Large Language Model) 기반 자연어 피드백을 제공하는 **하이브
 > GitHub에서 mermaid 다이어그램을 보려면, 해당 저장소에서 `mermaid.js` 지원이 필요합니다.
 
 <details>
-<summary>시스템 아키텍처 (Mermaid)</summary>
+<summary>시스템 설계 아키텍처</summary>
 
 ```mermaid
 flowchart TD
+    A["🎙️ 학습자 음성 입력"] --> B1["📁 음성 전처리"]
 
-    A[학습자 음성 입력] --> B1[음성 전처리]
+    B1 --> B2["🧭 Forced Alignment\n(단어/음소 정렬)"]
+    B1 --> B3["📈 음향 피처 추출\n(Pitch, Duration 등)"]
+    B1 --> B4["🧠 음성 임베딩 추출\n(Wav2Vec2 / Whisper)"]
 
-    B1 --> B2[Forced Alignment - 단어/음소 정렬]
-    B1 --> B3[음향 피처 추출 - Pitch, Duration 등]
-    B1 --> B4[음성 임베딩 추출 - Wav2Vec2 / Whisper]
+    B2 --> C1["🔍 발음 오류 탐지"]
+    B3 --> C2["🔍 억양 및 강세 이상 탐지"]
+    B4 --> C3["🔍 원어민 발화와 유사도 분석"]
 
-    B2 --> C1[발음 오류 탐지]
-    B3 --> C2[억양 및 강세 이상 탐지]
-    B4 --> C3[원어민 발화와 유사도 분석]
-
-    C1 --> D[LLM 피드백 프롬프트 구조 구성 - 분석 결과 통합]
+    C1 --> D["🧠 LLM 피드백 프롬프트 구조 구성\n(분석 결과 통합)"]
     C2 --> D
     C3 --> D
 
-    D --> E[LLM 피드백 결과 생성 - 분석 기반 프롬프트]
+    D --> E["🧠 LLM 피드백 결과 생성\n(분석 기반 프롬프트)"]
 
-    E --> F[UI 출력 - 시각화 및 피드백 카드]
+    E --> F["🖥️ UI 출력\n시각화 및 피드백 카드"]
+```
+</details>
+
+<details>
+<summary>시스템 구현 아키텍처 (LangGraph)</summary>
+
+```mermaid
+flowchart TD
+    Start([▶️ Start]) --> ExtractFeatures["🎧 ExtractFeatures<br>피처 추출"]
+    ExtractFeatures -->|✔| AnalyzeFeatures["🧠 AnalyzeFeatures<br>발음 오류, pitch, 유사도"]
+    ExtractFeatures -->|❌ 오류| ErrorHandler["🚨 ErrorHandler<br>예외 처리"]
+
+    AnalyzeFeatures -->|✔| ClassifyFeedback["🧠 ClassifyFeedbackType<br>칭찬형 / 제안형 / 오류수정형"]
+    AnalyzeFeatures -->|❌ 오류| ErrorHandler
+
+    ClassifyFeedback -->|칭찬형| GPT_Praise["🤖 GPT_Praise<br>칭찬 중심 피드백"]
+    ClassifyFeedback -->|제안형| GPT_Suggest["🤖 GPT_Suggest<br>발음 개선 제안"]
+    ClassifyFeedback -->|수정형| GPT_ErrorFix["🤖 GPT_ErrorFix<br>오류 수정 설명"]
+    ClassifyFeedback -->|❌ 오류| ErrorHandler
+
+    %% GPT 노드 결과
+    GPT_Praise -->|✔| SaveFeedback["💾 SaveFeedback<br>피드백 저장"]
+    GPT_Suggest -->|✔| SaveFeedback
+    GPT_ErrorFix -->|✔| SaveFeedback
+
+    %% GPT 실패 시 재시도
+    GPT_Praise -->|❌ 실패| RetryGPT["🔁 RetryGPT<br>GPT 재시도"]
+    GPT_Suggest -->|❌ 실패| RetryGPT
+    GPT_ErrorFix -->|❌ 실패| RetryGPT
+
+    RetryGPT -->|재시도 성공| SaveFeedback
+    RetryGPT -->|재시도 실패| ErrorHandler
+
+    %% 오류 핸들링 → fallback 피드백
+    ErrorHandler --> LogError["📝 LogError<br>에러 정보 저장"]
+    LogError --> FallbackFeedback["🛟 FallbackFeedback<br>기본 피드백 생성"]
+    FallbackFeedback --> SaveFeedback
+
+    SaveFeedback --> LogState["📊 LogState<br>중간 결과 저장"]
+    LogState --> UserNotification["📣 UserNotification<br>사용자 메시지 구성"]
+    UserNotification --> Return(["✅ Return<br>피드백 응답 반환"])
+    Return --> End([🏁 End])
 ```
 
 </details>
@@ -134,7 +175,7 @@ pitch = sound.to_pitch()
 pitch_values = pitch.selected_array['frequency']
 ```
 
---
+---
 
 ### 6. 분석 결과 구조 예시
 
