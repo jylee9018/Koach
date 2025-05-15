@@ -1,4 +1,5 @@
-# ⚙️ Koach 기술 문서
+# ⚙️ Koach - 한국어 발음 교정 AI 코치: 기술 문서
+> Koach = Korean + Coach
 
 ---
 
