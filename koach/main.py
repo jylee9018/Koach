@@ -123,6 +123,24 @@ def setup_argparse() -> argparse.ArgumentParser:
     )
     
     parser.add_argument(
+        "--debug-prompt",
+        action="store_true",
+        help="🔍 프롬프트 디버깅 모드 (프롬프트를 파일로 저장)"
+    )
+    
+    parser.add_argument(
+        "--show-prompt",
+        action="store_true",
+        help="📋 생성된 프롬프트를 터미널에 출력"
+    )
+    
+    parser.add_argument(
+        "--prompt-only",
+        action="store_true",
+        help="🚀 프롬프트만 생성하고 GPT 호출 안함 (빠른 테스트용)"
+    )
+    
+    parser.add_argument(
         "--quiet", "-q",
         action="store_true",
         help="최소한의 출력만 표시"
@@ -169,7 +187,10 @@ def parse_arguments(args: argparse.Namespace) -> Dict[str, Any]:
         "native_audio": native_audio,
         "script_text": script_text,
         "visualize": not args.no_visualization,
-        "config": config
+        "config": config,
+        "debug_prompt": args.debug_prompt,
+        "show_prompt": args.show_prompt,
+        "prompt_only": args.prompt_only
     }
 
 # =============================================================================
@@ -180,6 +201,36 @@ def print_startup_banner():
     """시작 배너 출력"""
     print("🚀 Koach - 한국어 발음 교정 도우미")
     print("=" * 60)
+
+def print_prompt_debug(result: Dict[str, Any]) -> None:
+    """프롬프트 디버깅 정보 출력"""
+    if not result.get("prompt_used"):
+        return
+    
+    prompt = result["prompt_used"]
+    
+    print("\n" + "🔍"*30)
+    print("🔍 PROMPT DEBUG")
+    print("🔍"*30)
+    print(f"📝 프롬프트 길이: {len(prompt)} 문자")
+    print(f"📊 사용된 모델: {result.get('config', {}).get('openai_model', 'unknown')}")
+    print("🔍"*30)
+    print("\n📋 생성된 프롬프트:")
+    print("-" * 80)
+    print(prompt)
+    print("-" * 80)
+    print("🔍"*30)
+
+def show_prompt_files_info(koach) -> None:
+    """저장된 프롬프트 파일 정보 출력"""
+    latest_file = koach.get_latest_prompt_file()
+    if latest_file:
+        print(f"\n💾 최신 프롬프트 파일: {latest_file}")
+        print("📖 파일 내용 보기:")
+        print(f"    cat '{latest_file}'")
+        print("📊 JSON 디버그 파일 보기:")
+        debug_file = latest_file.replace("prompt_", "debug_").replace(".txt", ".json")
+        print(f"    cat '{debug_file}'")
 
 def print_gpt_feedback(result: Dict[str, Any]) -> None:
     """GPT 피드백을 터미널에 예쁘게 출력 (베타 스타일)"""
@@ -296,6 +347,10 @@ def main():
         logger.info("🔧 Koach 시스템 초기화 중...")
         koach = Koach()
         
+        # 프롬프트 디버깅 모드 활성화
+        if parsed["debug_prompt"]:
+            koach.enable_detailed_prompt_logging()
+        
         logger.info("🎯 발음 분석 시작...")
         result = koach.analyze_pronunciation(
             learner_audio=learner_audio,
@@ -305,6 +360,17 @@ def main():
         )
         
         if result and result.get("status") in ["완료", "success"]:
+            # 🔍 프롬프트 디버깅 옵션 처리
+            if parsed["show_prompt"] or parsed["debug_prompt"]:
+                print_prompt_debug(result)
+            
+            if parsed["debug_prompt"]:
+                show_prompt_files_info(koach)
+            
+            if parsed["prompt_only"]:
+                print("\n🚀 프롬프트만 생성 완료! (GPT 호출 건너뜀)")
+                return 0
+            
             # 결과 출력
             print_analysis_summary(result)
             print_gpt_feedback(result)

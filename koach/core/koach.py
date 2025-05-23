@@ -32,6 +32,11 @@ from utils.text import (
 from core.prosody import ProsodyAnalyzer
 from core.knowledge_base import KnowledgeBase
 from config.settings import CURRENT_CONFIG, PATHS, OUTPUT_DIR, TEMP_ROOT, VISUALIZE_DIR
+from config.prompt_templates import (
+    template_manager, 
+    PromptType, 
+    get_optimized_prompt_with_templates
+)
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +222,7 @@ class Koach:
                 with open(self.script_path, "w", encoding="utf-8") as f:
                     f.write(script_text)
 
-            # 5. MFA 정렬 (최적화 및 건너뛰기 옵션) - 방법 3
+            # 5. MFA 정렬 (최적화 및 건너뛰기 옵션)
             logger.info("🎯 3단계: MFA 정렬")
             
             # Whisper 전사 결과를 파일로 저장
@@ -233,7 +238,7 @@ class Koach:
                 learner_timing = ""
                 native_timing = ""
             else:
-                # 배치 정렬 시도 (방법 1)
+                # 배치 정렬 시도
                 alignment_success = False
                 
                 if CURRENT_CONFIG["mfa"].get("batch_processing", True):
@@ -264,9 +269,9 @@ class Koach:
                 # 결과 처리
                 if alignment_success:
                     result["steps"]["mfa_alignment"] = "성공"
-                    # 압축된 TextGrid 요약
-                    learner_timing = self.summarize_textgrid_compact(self.learner_textgrid) or ""
-                    native_timing = self.summarize_textgrid_compact(self.native_textgrid) or ""
+                    # 지능적 TextGrid 요약 사용
+                    learner_timing = self.summarize_textgrid_smart(self.learner_textgrid, 800) or ""
+                    native_timing = self.summarize_textgrid_smart(self.native_textgrid, 800) or ""
                 else:
                     logger.warning("MFA 정렬 완전 실패, 기본 분석으로 진행")
                     result["steps"]["mfa_alignment"] = "실패"
@@ -336,14 +341,85 @@ class Koach:
             if "comparison" in result:
                 result["comparison"] = self._convert_numpy_types(result["comparison"])
 
-            # 7. GPT 피드백 생성 (5단계)
-            logger.info("🎯 5단계: GPT 피드백 생성")
+            # 7. GPT 피드백 생성 (5단계) - 개선된 프롬프트 시스템 사용
+            logger.info("🎯 5단계: GPT 피드백 생성 (최적화된 프롬프트)")
             
-            prompt = self.generate_compact_prompt(
-                result["learner_text"], result["native_text"], script_text or "알 수 없음",
-                learner_timing, native_timing
+            # prosody 분석과 비교 분석 결과를 피드백에 포함
+            prosody_feedback = {}
+            if prosody_analysis:
+                prosody_feedback["prosody_analysis"] = prosody_analysis
+            if comparison:
+                prosody_feedback["comparison"] = comparison
+            
+            # 데이터 품질 평가
+            quality_score = self._assess_data_quality(
+                result["learner_text"], result["native_text"], 
+                learner_timing, native_timing, prosody_feedback
             )
+            logger.info(f"📊 데이터 품질 점수: {quality_score:.2f}")
             
+            # 운율 컨텍스트 생성
+            prosody_context = ""
+            if prosody_feedback:
+                prosody_context = self._format_prosody_context(prosody_feedback)
+            
+            # RAG 컨텍스트 생성
+            rag_context = ""
+            if self.knowledge_base:
+                query = f"한국어 발음 {script_text} 교정"
+                search_results = self.knowledge_base.search(query, top_k=1)
+                if search_results:
+                    rag_context = f"\n\n**참고**: {search_results[0]['content'][:150]}..."
+            
+            # 템플릿 자동 선택
+            recommended_template = template_manager.get_recommended_template(
+                quality_score, token_limit=2000  # GPT-4 토큰 제한 고려
+            )
+            logger.info(f"🎨 사용할 템플릿: {recommended_template.value}")
+            
+            # 최적화된 프롬프트 생성
+            try:
+                prompt = get_optimized_prompt_with_templates(
+                    template_type=recommended_template,
+                    script_text=script_text or "알 수 없음",
+                    learner_text=result["learner_text"],
+                    native_text=result["native_text"],
+                    learner_timing=self._truncate_string(learner_timing, 150),
+                    native_timing=self._truncate_string(native_timing, 150),
+                    prosody_context=prosody_context,
+                    rag_context=rag_context,
+                )
+                
+                # 토큰 수 추정 및 로깅
+                estimated_tokens = template_manager.estimate_tokens(
+                    recommended_template,
+                    script_text=script_text or "알 수 없음",
+                    learner_text=result["learner_text"],
+                    native_text=result["native_text"],
+                    learner_timing=self._truncate_string(learner_timing, 150),
+                    native_timing=self._truncate_string(native_timing, 150),
+                    prosody_context=prosody_context,
+                    rag_context=rag_context,
+                )
+                logger.info(f"📏 추정 토큰 수: {estimated_tokens}")
+                
+            except Exception as e:
+                logger.error(f"템플릿 프롬프트 생성 실패, 기본 방식 사용: {e}")
+                # 백업: 기존 방식 사용
+                prompt = self.generate_compact_prompt(
+                    result["learner_text"], result["native_text"], script_text or "알 수 없음",
+                    learner_timing, native_timing, prosody_feedback
+                )
+            
+            # 🔍 프롬프트 디버깅: JSON 파일로 저장 (템플릿 정보 추가)
+            debug_result = result.copy()
+            debug_result["template_info"] = {
+                "type": recommended_template.value,
+                "quality_score": quality_score,
+                "estimated_tokens": estimated_tokens if 'estimated_tokens' in locals() else 0
+            }
+            self._save_prompt_for_debugging(prompt, debug_result)
+
             gpt_feedback = self.get_feedback(prompt)
             result["feedback"] = gpt_feedback
             result["prompt_used"] = prompt
@@ -1082,7 +1158,47 @@ class Koach:
                 return None
 
             client = OpenAI(api_key=self.openai_api_key)
+            
+            # LangSmith 트레이싱 (선택적)
+            response = self._call_openai_with_tracing(client, prompt)
+            
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.error(f"피드백 생성 실패: {e}")
+            return None
+
+    def _call_openai_with_tracing(self, client: OpenAI, prompt: str):
+        """LangSmith 트레이싱을 포함한 OpenAI 호출 (선택적)"""
+        try:
+            # LangSmith 설정이 있으면 트레이싱 활성화
+            langsmith_api_key = os.getenv("LANGSMITH_API_KEY")
+            
+            if langsmith_api_key:
+                # LangSmith 트레이싱 활성화
+                os.environ["LANGCHAIN_TRACING_V2"] = "true"
+                os.environ["LANGCHAIN_PROJECT"] = "koach-pronunciation-analysis"
+                logger.info("🔍 LangSmith 트레이싱 활성화")
+            
+            # OpenAI 호출
             response = client.chat.completions.create(
+                model=self.config["openai_model"],
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "당신은 친절한 한국어 발음 강사입니다. 학습자가 외국인임을 고려하여 쉬운 문법 용어로 설명해주세요.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,  # 적절한 창의성
+                max_tokens=2000,  # 충분한 응답 길이
+            )
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"OpenAI 호출 실패: {e}")
+            # 기본 호출로 백업
+            return client.chat.completions.create(
                 model=self.config["openai_model"],
                 messages=[
                     {
@@ -1093,11 +1209,6 @@ class Koach:
                 ],
             )
 
-            return response.choices[0].message.content
-        except Exception as e:
-            logger.error(f"피드백 생성 실패: {e}")
-            return None
-
     def generate_compact_prompt(
         self,
         learner_text: str,
@@ -1107,46 +1218,95 @@ class Koach:
         native_timing: str,
         prosody_feedback: Optional[Dict] = None,
     ) -> str:
-        """GPT용 발음 분석 프롬프트 생성 (베타 버전 압축된 버전)"""
+        """GPT용 발음 분석 프롬프트 생성 (최적화된 버전)"""
         
-        # RAG 검색으로 관련 지식 가져오기
+        # RAG 검색으로 관련 지식 가져오기 (토큰 제한)
         rag_context = ""
         if self.knowledge_base:
-            query = f"한국어 발음 {script_text} 교정 피드백"
-            search_results = self.knowledge_base.search(query, top_k=2)
+            query = f"한국어 발음 {script_text} 교정"
+            search_results = self.knowledge_base.search(query, top_k=1)  # 1개만
             
             if search_results:
-                rag_context = "\n\n**참고 발음 지식**:\n"
-                for result in search_results:
-                    rag_context += f"- {result['content'][:200]}...\n"
+                rag_context = f"\n\n**참고**: {search_results[0]['content'][:150]}..."
 
-        # 메인 프롬프트 생성
+        # 운율 분석 결과를 간결하게 처리
+        prosody_context = ""
+        is_prosody_available = False
+        
+        if prosody_feedback:
+            prosody_analysis = prosody_feedback.get("prosody_analysis", {})
+            comparison = prosody_feedback.get("comparison", {})
+            
+            if prosody_analysis or comparison:
+                is_prosody_available = True
+                prosody_context = "\n\n**음성 특성**:"
+                
+                # 핵심 지표만 포함
+                if prosody_analysis:
+                    pitch_info = prosody_analysis.get("pitch", {})
+                    energy_info = prosody_analysis.get("energy", {})
+                    duration = prosody_analysis.get("duration", 0)
+                    
+                    if pitch_info:
+                        prosody_context += f"\n- 피치: 평균 {pitch_info.get('mean', 0):.0f}Hz (범위 {pitch_info.get('min', 0):.0f}-{pitch_info.get('max', 0):.0f}Hz)"
+                    if energy_info:
+                        prosody_context += f"\n- 강세: 평균 {energy_info.get('mean', 0):.3f}"
+                    if duration:
+                        prosody_context += f"\n- 발화 길이: {duration:.2f}초"
+                
+                # 비교 결과 (핵심만)
+                if comparison:
+                    prosody_comp = comparison.get("prosody_comparison", {})
+                    if prosody_comp:
+                        prosody_context += "\n\n**vs 원어민**:"
+                        
+                        pitch_comp = prosody_comp.get("pitch", {})
+                        if pitch_comp:
+                            ref_pitch = pitch_comp.get("reference_mean", 0)
+                            diff = pitch_comp.get("mean_diff", 0)
+                            prosody_context += f"\n- 피치 차이: {diff:+.0f}Hz (원어민: {ref_pitch:.0f}Hz)"
+                        
+                        duration_comp = prosody_comp.get("duration", {})
+                        if duration_comp:
+                            diff = duration_comp.get("diff", 0)
+                            prosody_context += f"\n- 속도 차이: {diff:+.2f}초"
+
+        # 타이밍 정보 지능적 처리 (길이 제한 강화)
+        max_timing_length = 150 if is_prosody_available else 300
+        learner_timing_display = self._truncate_string(learner_timing, max_timing_length)
+        native_timing_display = self._truncate_string(native_timing, max_timing_length)
+
+        # 핵심 프롬프트 생성 (간결화)
         prompt = f"""당신은 한국어 발음 교정 전문가입니다.
 
-**학습 목표 문장**: {script_text}
+**목표**: {script_text}
 
 **분석 데이터**:
-- 학습자 발화: {learner_text}
-- 원어민 발화: {native_text}
-- 학습자 타이밍: {learner_timing[:300] if learner_timing else 'N/A'}...
-- 원어민 타이밍: {native_timing[:300] if native_timing else 'N/A'}...{rag_context}
+- 학습자: {learner_text}
+- 원어민: {native_text}
+- 학습자 타이밍: {learner_timing_display}
+- 원어민 타이밍: {native_timing_display}{prosody_context}{rag_context}
 
-**요청사항**:
-1. 학습자와 원어민 발음의 주요 차이점 분석
-2. 구체적인 발음 교정 포인트 제시  
-3. 실제적인 연습 방법 제안
+**분석 요청**:
+1. 발음 오류 (단어/음소별, 한글 설명)
+2. 차이점 분석 (억양, 강세, 속도)
+3. 교정 방법 (구체적)
+4. 연습법 제안
 
 **응답 형식**:
-## 📊 발음 분석
-[주요 차이점]
+## 📊 분석
+[오류사항 - 구체적 단어/음소]
 
-## 🎯 교정 포인트  
-[구체적인 교정사항]
+## 🎯 교정
+[발음/억양/강세 개선법]
 
-## 💡 연습 방법
-[실용적인 연습법]
+## 💡 연습
+[실용적 연습법]
 
-간결하고 실용적으로 답변해주세요."""
+## ⭐️ 격려
+[잘한 점과 동기부여]
+
+간결하고 실용적으로 답하세요."""
 
         return prompt
 
@@ -1444,6 +1604,84 @@ class Koach:
             logger.error(f"TextGrid 압축 요약 실패: {e}")
             return None
 
+    def summarize_textgrid_smart(self, path: str, max_length: int = 800) -> Optional[str]:
+        """지능적 TextGrid 요약 (핵심 정보 우선)"""
+        try:
+            logger.info(f"📊 지능적 TextGrid 요약 중: {path}")
+            import textgrid
+            tg = textgrid.TextGrid.fromFile(path)
+            
+            # 1. 핵심 음소만 추출 (모음, 자음 구분)
+            important_phonemes = []
+            all_phonemes = []
+            
+            for tier in tg.tiers:
+                if hasattr(tier, 'intervals'):
+                    for interval in tier.intervals:
+                        if interval.mark and interval.mark.strip():
+                            duration = round(interval.maxTime - interval.minTime, 2)
+                            phoneme_info = f"{interval.mark}({duration}s)"
+                            all_phonemes.append(phoneme_info)
+                            
+                            # 핵심 음소 판별 (긴 발화, 중요 음소 등)
+                            if (duration > 0.3 or 
+                                interval.mark in ['ㅏ', 'ㅓ', 'ㅗ', 'ㅜ', 'ㅡ', 'ㅣ'] or
+                                interval.mark in ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ']):
+                                important_phonemes.append(phoneme_info)
+            
+            # 2. 길이에 따라 조절
+            full_summary = " | ".join(all_phonemes)
+            if len(full_summary) <= max_length:
+                return full_summary
+            
+            # 3. 핵심 음소만으로 시도
+            important_summary = " | ".join(important_phonemes)
+            if len(important_summary) <= max_length:
+                return important_summary + " [핵심 음소]"
+            
+            # 4. 균등 간격으로 샘플링
+            if len(all_phonemes) > 5:
+                step = max(1, len(all_phonemes) // (max_length // 15))
+                sampled = [all_phonemes[i] for i in range(0, len(all_phonemes), step)]
+                return " | ".join(sampled) + " [샘플링됨]"
+            
+            # 5. 최후 수단: 앞부분만
+            return full_summary[:max_length-10] + "... [절단됨]"
+            
+        except Exception as e:
+            logger.error(f"지능적 TextGrid 요약 실패: {e}")
+            return None
+
+    def get_timing_summary(self, timing_info: str, is_prosody_available: bool = False) -> str:
+        """타이밍 정보의 지능적 요약"""
+        if not timing_info:
+            return 'N/A'
+        
+        # 동적 길이 조절
+        max_length = 200 if is_prosody_available else 600
+        
+        if len(timing_info) <= max_length:
+            return timing_info
+        
+        # 계층적 정보 제공
+        parts = timing_info.split(' | ')
+        phoneme_count = len(parts)
+        
+        if phoneme_count > 10:
+            # 시작, 중간, 끝 부분 샘플링
+            start_parts = parts[:3]
+            middle_idx = phoneme_count // 2
+            middle_parts = parts[middle_idx:middle_idx+2]
+            end_parts = parts[-3:]
+            
+            summary = f"총 {phoneme_count}개 음소 - 시작: {' | '.join(start_parts)} ... 중간: {' | '.join(middle_parts)} ... 끝: {' | '.join(end_parts)}"
+            
+            if len(summary) <= max_length:
+                return summary
+        
+        # 최후 수단: 단순 절단
+        return timing_info[:max_length-10] + "... [요약됨]"
+
     def extract_pronunciation_issues_detailed(
         self, learner_text: str, native_text: str, learner_timing: str
     ) -> List[str]:
@@ -1529,7 +1767,7 @@ class Koach:
                     pitch_contour.append(pitch)
             
             # 에너지 분석
-            energy = librosa.feature.rms(y=y, hop_length=512)[0]
+            energy = librosa.feature.rms(y=y)[0]
             
             # 스펙트럼 중심 (음색 분석)
             spectral_centroids = librosa.feature.spectral_centroid(y=y, sr=sr)[0]
@@ -1567,3 +1805,298 @@ class Koach:
         except Exception as e:
             logger.error(f"운율 분석 실패: {e}")
             return {}
+
+    def _save_prompt_for_debugging(self, prompt: str, analysis_result: Dict) -> None:
+        """프롬프트 디버깅을 위한 저장 메서드"""
+        try:
+            # 디버그 폴더 생성
+            debug_dir = self.temp_dir / "debug"
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 타임스탬프 생성
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # 1. 프롬프트만 텍스트 파일로 저장 (가독성)
+            prompt_file = debug_dir / f"prompt_{timestamp}.txt"
+            with open(prompt_file, 'w', encoding='utf-8') as f:
+                f.write("="*80 + "\n")
+                f.write("🔍 KOACH PROMPT DEBUG\n")
+                f.write("="*80 + "\n\n")
+                f.write(prompt)
+                f.write("\n\n" + "="*80 + "\n")
+                f.write(f"생성 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("="*80 + "\n")
+            
+            # 2. 전체 디버그 정보를 JSON으로 저장
+            debug_data = {
+                "timestamp": timestamp,
+                "prompt": prompt,
+                "analysis_input": {
+                    "learner_text": analysis_result.get("learner_text", ""),
+                    "native_text": analysis_result.get("native_text", ""),
+                    "script_text": analysis_result.get("script_text", ""),
+                    "learner_timing_preview": self._truncate_string(analysis_result.get("learner_timing", ""), 200),
+                    "native_timing_preview": self._truncate_string(analysis_result.get("native_timing", ""), 200)
+                },
+                "prosody_data": {
+                    "phoneme_count": len(analysis_result.get("phoneme_analysis", {}).get("phonemes", [])),
+                    "prosody_available": bool(analysis_result.get("prosody_analysis")),
+                    "comparison_available": bool(analysis_result.get("comparison"))
+                },
+                "config": {
+                    "model": self.config.get("openai_model", "unknown"),
+                    "use_rag": self.config.get("use_rag", False),
+                    "embedding_model": self.config.get("embedding_model", "unknown")
+                }
+            }
+            
+            debug_json_file = debug_dir / f"debug_{timestamp}.json"
+            with open(debug_json_file, 'w', encoding='utf-8') as f:
+                json.dump(debug_data, f, ensure_ascii=False, indent=2)
+            
+            # 3. 터미널에 요약 로그 출력
+            logger.info("🔍 프롬프트 디버그 정보 저장 완료")
+            logger.info(f"📄 프롬프트 파일: {prompt_file}")
+            logger.info(f"📊 디버그 JSON: {debug_json_file}")
+            logger.info(f"📝 프롬프트 길이: {len(prompt)} 문자")
+            
+            # 프롬프트 미리보기 (처음 200자)
+            preview = prompt.replace('\n', ' ').strip()[:200]
+            logger.info(f"📋 프롬프트 미리보기: {preview}...")
+            
+        except Exception as e:
+            logger.error(f"프롬프트 디버깅 저장 실패: {e}")
+
+    def _truncate_string(self, text: str, max_length: int) -> str:
+        """문자열을 지정된 길이로 자르기"""
+        if len(text) <= max_length:
+            return text
+        return text[:max_length] + "..."
+
+    def _create_empty_prosody_chart(self, output_path: str) -> None:
+        """데이터가 없을 때 기본 차트 생성"""
+        try:
+            import matplotlib.pyplot as plt
+            
+            plt.figure(figsize=(10, 6))
+            plt.text(0.5, 0.5, '운율 데이터가 없습니다\n(No Prosody Data Available)', 
+                    horizontalalignment='center', verticalalignment='center',
+                    fontsize=16, transform=plt.gca().transAxes)
+            plt.title('Prosody Analysis')
+            plt.axis('off')
+            plt.savefig(output_path, dpi=300, bbox_inches="tight")
+            plt.close()
+            
+        except Exception as e:
+            logger.error(f"기본 차트 생성 실패: {e}")
+
+    def enable_detailed_prompt_logging(self) -> None:
+        """상세한 프롬프트 로깅 활성화"""
+        logger.info("🔍 상세한 프롬프트 로깅이 활성화되었습니다")
+        logger.info(f"📁 디버그 폴더: {self.temp_dir / 'debug'}")
+
+    def get_latest_prompt_file(self) -> Optional[str]:
+        """가장 최근 프롬프트 파일 경로 반환"""
+        try:
+            debug_dir = self.temp_dir / "debug"
+            if not debug_dir.exists():
+                return None
+            
+            prompt_files = list(debug_dir.glob("prompt_*.txt"))
+            if not prompt_files:
+                return None
+            
+            # 가장 최근 파일 반환 (파일명의 타임스탬프 기준)
+            latest_file = max(prompt_files, key=lambda x: x.stat().st_mtime)
+            return str(latest_file)
+            
+        except Exception as e:
+            logger.error(f"최근 프롬프트 파일 찾기 실패: {e}")
+            return None
+
+    def generate_adaptive_prompt(
+        self,
+        learner_text: str,
+        native_text: str,
+        script_text: str,
+        learner_timing: str,
+        native_timing: str,
+        prosody_feedback: Optional[Dict] = None,
+    ) -> str:
+        """상황 적응형 프롬프트 생성 (데이터 품질에 따라 조정)"""
+        
+        # 데이터 품질 평가
+        quality_score = self._assess_data_quality(
+            learner_text, native_text, learner_timing, native_timing, prosody_feedback
+        )
+        
+        # 품질에 따른 프롬프트 전략 선택
+        if quality_score >= 0.8:
+            return self._generate_high_quality_prompt(
+                learner_text, native_text, script_text, 
+                learner_timing, native_timing, prosody_feedback
+            )
+        elif quality_score >= 0.5:
+            return self._generate_medium_quality_prompt(
+                learner_text, native_text, script_text,
+                learner_timing, native_timing, prosody_feedback
+            )
+        else:
+            return self._generate_basic_prompt(
+                learner_text, native_text, script_text
+            )
+
+    def _assess_data_quality(
+        self,
+        learner_text: str,
+        native_text: str, 
+        learner_timing: str,
+        native_timing: str,
+        prosody_feedback: Optional[Dict] = None
+    ) -> float:
+        """데이터 품질 평가 (0-1 스케일)"""
+        score = 0.0
+        
+        # 텍스트 품질 (40%)
+        if learner_text and native_text:
+            score += 0.2
+            if len(learner_text) > 10 and len(native_text) > 10:
+                score += 0.2
+        
+        # 타이밍 데이터 품질 (30%)
+        if learner_timing and native_timing:
+            score += 0.15
+            if len(learner_timing) > 50 and len(native_timing) > 50:
+                score += 0.15
+        
+        # 운율 데이터 품질 (30%)
+        if prosody_feedback:
+            prosody_analysis = prosody_feedback.get("prosody_analysis", {})
+            comparison = prosody_feedback.get("comparison", {})
+            
+            if prosody_analysis:
+                score += 0.15
+            if comparison:
+                score += 0.15
+        
+        return min(score, 1.0)
+
+    def _generate_high_quality_prompt(self, learner_text, native_text, script_text, learner_timing, native_timing, prosody_feedback):
+        """고품질 데이터용 상세 프롬프트"""
+        return self.generate_compact_prompt(
+            learner_text, native_text, script_text, 
+            learner_timing, native_timing, prosody_feedback
+        )
+
+    def _generate_medium_quality_prompt(self, learner_text, native_text, script_text, learner_timing, native_timing, prosody_feedback):
+        """중품질 데이터용 간소화 프롬프트"""
+        
+        # 핵심 정보만 포함
+        prompt = f"""한국어 발음 교정 전문가로서 분석해주세요.
+
+**목표**: {script_text}
+**학습자**: {learner_text}
+**원어민**: {native_text}
+
+**분석 요청**:
+1. 주요 발음 차이점
+2. 개선 방법
+3. 연습법
+
+**응답**:
+## 분석
+[핵심 차이점]
+
+## 개선법  
+[구체적 방법]
+
+## 연습
+[실용적 팁]
+
+간결하게 답하세요."""
+        
+        return prompt
+
+    def _generate_basic_prompt(self, learner_text, native_text, script_text):
+        """기본 데이터용 최소 프롬프트"""
+        
+        prompt = f"""한국어 발음을 비교 분석해주세요.
+
+목표: {script_text}
+학습자: {learner_text}  
+원어민: {native_text}
+
+주요 차이점과 개선 방법을 간단히 설명해주세요."""
+        
+        return prompt
+
+    def get_optimized_prompt(
+        self,
+        learner_text: str,
+        native_text: str,
+        script_text: str,
+        learner_timing: str = "",
+        native_timing: str = "",
+        prosody_feedback: Optional[Dict] = None,
+        use_adaptive: bool = True,
+    ) -> str:
+        """최적화된 프롬프트 생성 (통합 인터페이스)"""
+        
+        if use_adaptive:
+            return self.generate_adaptive_prompt(
+                learner_text, native_text, script_text,
+                learner_timing, native_timing, prosody_feedback
+            )
+        else:
+            return self.generate_compact_prompt(
+                learner_text, native_text, script_text,
+                learner_timing, native_timing, prosody_feedback
+            )
+
+    def _format_prosody_context(self, prosody_feedback: Dict) -> str:
+        """운율 피드백 데이터를 템플릿용으로 포맷팅"""
+        try:
+            prosody_analysis = prosody_feedback.get("prosody_analysis", {})
+            comparison = prosody_feedback.get("comparison", {})
+            
+            context = ""
+            
+            if prosody_analysis or comparison:
+                context = "\n\n**음성 특성**:"
+                
+                # 핵심 지표만 포함
+                if prosody_analysis:
+                    pitch_info = prosody_analysis.get("pitch", {})
+                    energy_info = prosody_analysis.get("energy", {})
+                    duration = prosody_analysis.get("duration", 0)
+                    
+                    if pitch_info:
+                        context += f"\n- 피치: 평균 {pitch_info.get('mean', 0):.0f}Hz (범위 {pitch_info.get('min', 0):.0f}-{pitch_info.get('max', 0):.0f}Hz)"
+                    if energy_info:
+                        context += f"\n- 강세: 평균 {energy_info.get('mean', 0):.3f}"
+                    if duration:
+                        context += f"\n- 발화 길이: {duration:.2f}초"
+                
+                # 비교 결과 (핵심만)
+                if comparison:
+                    prosody_comp = comparison.get("prosody_comparison", {})
+                    if prosody_comp:
+                        context += "\n\n**vs 원어민**:"
+                        
+                        pitch_comp = prosody_comp.get("pitch", {})
+                        if pitch_comp:
+                            ref_pitch = pitch_comp.get("reference_mean", 0)
+                            diff = pitch_comp.get("mean_diff", 0)
+                            context += f"\n- 피치 차이: {diff:+.0f}Hz (원어민: {ref_pitch:.0f}Hz)"
+                        
+                        duration_comp = prosody_comp.get("duration", {})
+                        if duration_comp:
+                            diff = duration_comp.get("diff", 0)
+                            context += f"\n- 속도 차이: {diff:+.2f}초"
+            
+            return context
+            
+        except Exception as e:
+            logger.error(f"운율 컨텍스트 포맷팅 실패: {e}")
+            return ""
