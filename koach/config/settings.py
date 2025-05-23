@@ -1,4 +1,3 @@
-
 """
 Koach 한국어 발음 교정 시스템 - 중앙화된 설정 관리
 """
@@ -6,6 +5,16 @@ Koach 한국어 발음 교정 시스템 - 중앙화된 설정 관리
 import os
 from pathlib import Path
 from typing import Dict, Any
+
+# .env 파일 로드
+try:
+    from dotenv import load_dotenv
+    # 프로젝트 루트의 .env 파일 로드
+    _project_root = Path(__file__).parent.parent.parent
+    env_path = _project_root / ".env"
+    load_dotenv(env_path)
+except ImportError:
+    print("⚠️  python-dotenv가 설치되지 않았습니다. .env 파일을 수동으로 로드해주세요.")
 
 # =============================================================================
 # 📁 기본 경로 설정 (Base Paths)
