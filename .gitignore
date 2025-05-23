@@ -290,3 +290,4 @@ venv/
 
 temp/
 data/
+*backup*
