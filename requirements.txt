@@ -1,14 +1,121 @@
-fastapi==0.109.0
-uvicorn==0.27.0
-python-multipart==0.0.6
-python-dotenv==1.0.0
-langchain==0.1.0
-langchain-openai==0.0.5
-langgraph==0.0.15
-librosa==0.10.1
-numpy==1.24.3
-praat-parselmouth==0.4.3
-pydub==0.25.1
-pydantic-settings==2.0.0
-torch==2.0.1
-transformers==4.30.0
+# =============================================================================
+# Koach - 한국어 발음 교정 시스템 필수 패키지
+# =============================================================================
+
+# ⚠️  설치 전 필수 확인사항 ⚠️
+# 1. Python 3.8+ 필요
+# 2. Montreal Forced Alignment (MFA) 별도 설치 필요
+# 3. FFmpeg 설치 필요
+# 4. OpenAI API 키 필요
+
+# Core AI/ML Libraries
+openai>=1.0.0                      # GPT-4 API for feedback generation
+openai-whisper>=20231117           # Speech-to-text conversion
+sentence-transformers>=2.2.2       # Text embeddings for RAG system
+faiss-cpu>=1.7.4                   # Vector similarity search
+torch>=2.0.0                       # PyTorch (sentence-transformers dependency)
+numpy>=1.24.0                      # Numerical computations
+
+# Audio Processing
+librosa>=0.10.0                     # Audio analysis and feature extraction
+pydub>=0.25.1                      # Audio format conversion (requires FFmpeg)
+soundfile>=0.12.1                   # Audio file I/O
+
+# Speech Analysis
+textgrid>=1.5                       # TextGrid file parsing (MFA output)
+
+# Data Processing & Utilities
+scipy>=1.10.0                       # Signal processing
+python-dotenv>=1.0.0                # Environment variable management
+pathlib2>=2.3.7; python_version<"3.8"  # Path handling (for older Python)
+
+# Visualization
+matplotlib>=3.7.0                   # Plotting and visualization
+seaborn>=0.12.0                     # Statistical data visualization
+
+# Web Framework (Optional - for FastAPI version)
+fastapi>=0.100.0                    # Web API framework
+uvicorn[standard]>=0.22.0           # ASGI server
+python-multipart>=0.0.6             # File upload support
+
+# Development & Testing
+pytest>=7.0.0                       # Testing framework
+pytest-asyncio>=0.21.0              # Async testing support
+
+# =============================================================================
+# 📋 설치 가이드
+# =============================================================================
+
+# 1️⃣ Python 패키지 설치
+#    pip install -r requirements.txt
+
+# 2️⃣ Montreal Forced Alignment (MFA) 설치
+#    conda install -c conda-forge montreal-forced-alignment
+#    mfa model download acoustic korean_mfa
+#    mfa model download dictionary korean_mfa
+
+# 3️⃣ FFmpeg 설치
+#    macOS:   brew install ffmpeg
+#    Ubuntu:  sudo apt install ffmpeg
+#    Windows: https://ffmpeg.org/download.html
+
+# 4️⃣ 환경 변수 설정
+#    export OPENAI_API_KEY="your_openai_api_key_here"
+#    또는 .env 파일에 OPENAI_API_KEY=your_key_here
+
+# 5️⃣ 설치 확인
+#    python -c "import whisper, openai, librosa; print('✅ 설치 완료')"
+
+# =============================================================================
+# 🚨 문제 해결
+# =============================================================================
+
+# ❌ MFA 설치 오류 시:
+#    conda install -c conda-forge montreal-forced-alignment=2.2.17
+
+# ❌ FFmpeg 관련 오류 시:
+#    pip install pydub[mp3]
+
+# ❌ CUDA 메모리 부족 시:
+#    환경변수: export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+
+# ❌ 한국어 모델 다운로드 실패 시:
+#    수동 다운로드: https://mfa-models.readthedocs.io/
+
+# =============================================================================
+# System Requirements & Installation Notes
+# =============================================================================
+
+# 1. Montreal Forced Alignment (MFA) - External dependency
+#    Install via conda: conda install -c conda-forge montreal-forced-alignment
+#    Download Korean models: 
+#      mfa model download acoustic korean_mfa
+#      mfa model download dictionary korean_mfa
+
+# 2. FFmpeg - Required by pydub for audio conversion
+#    macOS: brew install ffmpeg
+#    Ubuntu: sudo apt install ffmpeg
+#    Windows: Download from https://ffmpeg.org/
+
+# 3. Environment Variables
+#    OPENAI_API_KEY=your_openai_api_key_here
+
+# =============================================================================
+# Optional Dependencies (for specific features)
+# =============================================================================
+
+# Streamlit UI (for beta versions)
+streamlit>=1.25.0                   # Web UI framework
+
+# Enhanced Korean language processing
+# g2pk>=1.0.0                       # Korean Grapheme-to-Phoneme (if needed)
+
+# =============================================================================
+# Version Compatibility
+# =============================================================================
+# Python >= 3.8
+# Recommended: Python 3.9-3.11
+
+# Note: Some packages may require specific versions depending on your system.
+# If you encounter compatibility issues, try installing with --no-deps flag
+# and manually install compatible versions.
