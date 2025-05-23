@@ -249,7 +249,14 @@ class Koach:
                 "whisper_model": self.config.get("whisper_model", "base"),
                 "openai_model": self.config.get("openai_model", "gpt-4o"),
                 "rag_enabled": self.config.get("use_rag", False),
-                "visualization_enabled": visualize
+                "visualization_enabled": visualize,
+                "normalization_applied": True,  # 정규화 적용 여부
+                "files_generated": {
+                    "learner_original": str(self.learner_wav).replace('_normalized', ''),
+                    "learner_normalized": str(self.learner_wav),
+                    "native_original": str(self.native_wav).replace('_normalized', ''),
+                    "native_normalized": str(self.native_wav),
+                }
             }
             
             return result
@@ -1373,3 +1380,21 @@ class Koach:
                     prompt += f"\n\n참고: {relevant_docs[0]['content'][:200]}..."  # 200자만 사용
 
         return prompt
+
+    def get_normalized_paths(self, speaker_type: str) -> Dict[str, str]:
+        """정규화된 파일들의 경로 반환
+        
+        Args:
+            speaker_type: "learner" 또는 "native"
+            
+        Returns:
+            Dict[str, str]: 원본과 정규화된 파일 경로들
+        """
+        wav_dir = self.temp_dir / "wav"
+        
+        return {
+            "original": str(wav_dir / f"{speaker_type}.wav"),
+            "normalized": str(wav_dir / f"{speaker_type}_normalized.wav"),
+            "for_analysis": str(wav_dir / f"{speaker_type}_normalized.wav"),  # 분석용은 정규화된 것 사용
+            "for_mfa": str(wav_dir / f"{speaker_type}.wav"),  # MFA용은 원본 사용 (더 안정적)
+        }
