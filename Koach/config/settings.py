@@ -1,70 +1,151 @@
+
+"""
+Koach 한국어 발음 교정 시스템 - 중앙화된 설정 관리
+"""
+
 import os
 from pathlib import Path
 from typing import Dict, Any
 
-# 기본 디렉토리 설정
-BASE_DIR = Path(__file__).parent.parent
-TEMP_DIR = BASE_DIR / "temp"
-INPUT_DIR = BASE_DIR / "input"
-OUTPUT_DIR = BASE_DIR / "output"
-WAV_DIR = TEMP_DIR / "wav"
-MFA_INPUT_DIR = TEMP_DIR / "mfa_input"
-MFA_OUTPUT_DIR = TEMP_DIR / "mfa_output"
-ALIGNED_DIR = TEMP_DIR / "aligned"
-MODELS_DIR = BASE_DIR / "models"
-KNOWLEDGE_DIR = BASE_DIR / "knowledge"
+# =============================================================================
+# 📁 기본 경로 설정 (Base Paths)
+# =============================================================================
 
-# Whisper 모델 경로 추가
+# 프로젝트 구조:
+# Koach/
+# ├── data/
+# │   ├── input/                            # 입력 파일들
+# │   └── output/                           # ✅ 최종 결과물 (JSON만)
+# │       └── analysis_result.json
+# │
+# └── koach/
+#     ├── temp/                             # ✅ 모든 중간 결과물
+#     │   ├── wav/                          # WAV 변환 파일들
+#     │   ├── normalized/                   # 정규화된 오디오 파일들
+#     │   ├── mfa_input/                    # MFA 입력 파일들
+#     │   ├── mfa_output/                   # MFA 출력 파일들 (TextGrid 파일들)
+#     │   └── visualize/                    # 시각화 결과물들 (PNG)
+#     │       ├── phoneme_analysis.png
+#     │       ├── prosody_analysis.png
+#     │       ├── comparison_analysis.png
+#     │       └── prosody_comparison.png
+#     ├── core/
+#     ├── utils/
+#     └── config/
+
+# 절대 경로 계산
+PROJECT_ROOT = Path(__file__).parent.parent.parent  # /Users/jlee/JDrvie/Dev/Koach
+KOACH_ROOT = Path(__file__).parent.parent           # /Users/jlee/JDrvie/Dev/Koach/koach
+
+# 주요 디렉토리들
+DATA_ROOT = PROJECT_ROOT / "data"
+INPUT_DIR = DATA_ROOT / "input"
+OUTPUT_DIR = DATA_ROOT / "output"           
+MODELS_DIR = KOACH_ROOT / "models"
+
+TEMP_ROOT = KOACH_ROOT / "temp"
+WAV_DIR = TEMP_ROOT / "wav"                         # 중간: WAV 파일들
+NORMALIZED_DIR = TEMP_ROOT / "normalized"           # 중간: 정규화된 파일들
+MFA_INPUT_DIR = TEMP_ROOT / "mfa_input"             # 중간: MFA 입력
+MFA_OUTPUT_DIR = TEMP_ROOT / "mfa_output"           # 중간: TextGrid 파일들
+VISUALIZE_DIR = TEMP_ROOT / "visualize"
+KNOWLEDGE_DIR = KOACH_ROOT / "knowledge"
+
+# 모델별 디렉토리들
 WHISPER_MODEL_DIR = MODELS_DIR / "whisper"
-
-# MFA 모델 경로 설정
-MFA_LEXICON_PATH = MODELS_DIR / "korean_mfa.dict"
-MFA_ACOUSTIC_MODEL_PATH = MODELS_DIR / "korean_mfa.zip"
-
-# 모델 경로 설정
-WHISPER_MODEL_PATH = MODELS_DIR / "whisper"
+MFA_LEXICON_PATH = MODELS_DIR / "korean_mfa.dict"          
+MFA_ACOUSTIC_MODEL_PATH = MODELS_DIR / "korean_mfa.zip"  
 FAISS_INDEX_PATH = MODELS_DIR / "faiss"
 SENTENCE_TRANSFORMER_PATH = MODELS_DIR / "sentence_transformer"
 
-# 기본 설정
-DEFAULT_CONFIG = {
-    "temp_dir": str(TEMP_DIR),
-    "input_dir": str(INPUT_DIR),
+# =============================================================================
+# ⚙️ 설정 (Configuration)
+# =============================================================================
+
+CURRENT_CONFIG = {
+    # 📁 경로 설정
+    "learner_audio": str(INPUT_DIR / "learner.m4a"),
+    "native_audio": str(INPUT_DIR / "native.m4a"),
     "output_dir": str(OUTPUT_DIR),
-    "aligned_dir": str(ALIGNED_DIR),
-    "mfa_input": str(MFA_INPUT_DIR),
-    "mfa_output": str(MFA_OUTPUT_DIR),
+    "temp_dir": str(TEMP_ROOT),
+    "wav_dir": str(WAV_DIR),
+    "normalized_dir": str(NORMALIZED_DIR),
+    "mfa_input_dir": str(MFA_INPUT_DIR),
+    "mfa_output_dir": str(MFA_OUTPUT_DIR),
+    "visualize_dir": str(VISUALIZE_DIR),
+    "knowledge_dir": str(KNOWLEDGE_DIR),
+
+    # 🎤 모델 설정
+    "whisper_model": "base",
+    "openai_model": "gpt-4o",
+    "embedding_model": "paraphrase-multilingual-MiniLM-L12-v2",
+    "use_rag": True,
+    
+    # 📄 모델 파일 경로
+    "lexicon_path": str(MFA_LEXICON_PATH),
+    "acoustic_model": str(MFA_ACOUSTIC_MODEL_PATH),
+    
+    # 🔊 오디오 처리 설정
     "audio": {
         "sample_rate": 16000,
         "channels": 1,
+        "format": "wav",
         "hop_length": 512,
         "frame_length": 2048,
         "top_db": 30,
     },
+    
+    # 🎙️ Whisper 설정
     "whisper": {
         "model_name": "base",
         "language": "ko",
         "task": "transcribe",
     },
+    
+    # 🔤 MFA 설정 (최적화 및 건너뛰기 옵션)
     "mfa": {
         "model_name": "korean",
-        "num_jobs": 4,
+        "num_jobs": 2,                    # CPU 코어 수에 맞게 조정
         "clean": True,
+        "fast_mode": True,                # 빠른 정렬 모드
+        "timeout": 120,                   # 2분 타임아웃
+        "batch_processing": True,         # ✅ 배치 처리 활성화
+        "skip_mfa": False,                # ✅ True로 설정하면 MFA 건너뛰기
+        "no_text_cleaning": True,
+        "speaker_mode": False,
         "lexicon_path": str(MFA_LEXICON_PATH),
         "acoustic_model": str(MFA_ACOUSTIC_MODEL_PATH),
     },
+
+    # 📝 스크립트 관련 설정
+    "script": {
+        "skip_transcription_with_script": True,    # 스크립트 제공 시 음성 인식 건너뛰기
+        "supported_extensions": [".txt", ".text"], # 지원하는 파일 확장자
+        "encoding": "utf-8",                       # 파일 인코딩
+        "auto_detect_file": True,                  # 자동 파일 감지 활성화
+        "max_file_size": 1048576,                  # 최대 파일 크기 (1MB)
+    },
+    
+    # 🔍 FAISS 설정
     "faiss": {
         "dimension": 384,
         "index_type": "L2",
     },
+    
+    # 🤖 Sentence Transformer 설정
     "sentence_transformer": {
         "model_name": "paraphrase-multilingual-MiniLM-L12-v2",
         "batch_size": 32,
     },
+    
+    # 📊 시각화 설정
     "visualization": {
+        "enabled": True,
         "dpi": 300,
         "figsize": (15, 10),
     },
+    
+    # 📝 로깅 설정
     "logging": {
         "level": "INFO",
         "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -72,7 +153,11 @@ DEFAULT_CONFIG = {
     },
 }
 
-# 파일 경로 설정
+# =============================================================================
+# 📍 경로 딕셔너리들 (Path Dictionaries)
+# =============================================================================
+
+# core/koach.py에서 사용하는 PATHS
 PATHS = {
     "learner_audio": INPUT_DIR / "learner.m4a",
     "native_audio": INPUT_DIR / "native.m4a",
@@ -89,98 +174,79 @@ PATHS = {
     "mfa_output": MFA_OUTPUT_DIR,
 }
 
+# main.py에서 사용하는 NEW_PATHS (문자열 버전)
+NEW_PATHS = {
+    "learner_audio": str(INPUT_DIR / "learner.m4a"),
+    "native_audio": str(INPUT_DIR / "native.m4a"),
+    "learner_wav": str(WAV_DIR / "learner.wav"),
+    "native_wav": str(WAV_DIR / "native.wav"),
+    "learner_normalized": str(NORMALIZED_DIR / "learner_normalized.wav"),
+    "native_normalized": str(NORMALIZED_DIR / "native_normalized.wav"),
+    "learner_transcript": str(WAV_DIR / "learner.txt"),
+    "native_transcript": str(WAV_DIR / "native.txt"),
+    "script_path": str(WAV_DIR / "script.txt"),
+    "learner_textgrid": str(MFA_OUTPUT_DIR / "learner.TextGrid"),
+    "native_textgrid": str(MFA_OUTPUT_DIR / "native.TextGrid"),
+    "lexicon_path": str(MFA_LEXICON_PATH),
+    "acoustic_model": str(MFA_ACOUSTIC_MODEL_PATH),
+    "mfa_input": str(MFA_INPUT_DIR),
+    "mfa_output": str(MFA_OUTPUT_DIR),
+    "output_dir": str(OUTPUT_DIR),
+    "wav_dir": str(WAV_DIR),
+    "normalized_dir": str(NORMALIZED_DIR),
+    "temp_dir": str(TEMP_ROOT),
+    "visualize_dir": str(VISUALIZE_DIR),
+    "knowledge_dir": str(KNOWLEDGE_DIR),
+}
 
-def create_directories():
-    """필요한 디렉토리 생성"""
+# =============================================================================
+# 🔧 함수들 (Functions)
+# =============================================================================
+
+def create_directories() -> None:
+    """필요한 모든 디렉토리 생성"""
     directories = [
-        TEMP_DIR,
         INPUT_DIR,
         OUTPUT_DIR,
+        TEMP_ROOT,
         WAV_DIR,
+        NORMALIZED_DIR,
         MFA_INPUT_DIR,
         MFA_OUTPUT_DIR,
-        ALIGNED_DIR,
+        VISUALIZE_DIR,
         MODELS_DIR,
         KNOWLEDGE_DIR,
         WHISPER_MODEL_DIR,
     ]
-
+    
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
+        print(f"📁 디렉토리 생성: {directory}")
 
+def validate_environment() -> list:
+    """환경 변수 검증"""
+    errors = []
+    
+    if not os.getenv("OPENAI_API_KEY"):
+        errors.append("❌ OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
+    
+    return errors
 
-def load_from_env(config: Dict[str, Any] = None) -> Dict[str, Any]:
-    """환경 변수에서 설정 로드"""
-    if config is None:
-        config = DEFAULT_CONFIG.copy()
+def update_config(user_config: Dict[str, Any]) -> None:
+    """설정 업데이트"""
+    CURRENT_CONFIG.update(user_config)
 
-    # 오디오 설정
-    if "AUDIO_SAMPLE_RATE" in os.environ:
-        config["audio"]["sample_rate"] = int(os.environ["AUDIO_SAMPLE_RATE"])
-    if "AUDIO_CHANNELS" in os.environ:
-        config["audio"]["channels"] = int(os.environ["AUDIO_CHANNELS"])
-    if "AUDIO_HOP_LENGTH" in os.environ:
-        config["audio"]["hop_length"] = int(os.environ["AUDIO_HOP_LENGTH"])
-    if "AUDIO_FRAME_LENGTH" in os.environ:
-        config["audio"]["frame_length"] = int(os.environ["AUDIO_FRAME_LENGTH"])
-    if "AUDIO_TOP_DB" in os.environ:
-        config["audio"]["top_db"] = float(os.environ["AUDIO_TOP_DB"])
+def get_config() -> Dict[str, Any]:
+    """현재 설정 반환"""
+    return CURRENT_CONFIG
 
-    # Whisper 설정
-    if "WHISPER_MODEL_NAME" in os.environ:
-        config["whisper"]["model_name"] = os.environ["WHISPER_MODEL_NAME"]
-    if "WHISPER_LANGUAGE" in os.environ:
-        config["whisper"]["language"] = os.environ["WHISPER_LANGUAGE"]
-    if "WHISPER_TASK" in os.environ:
-        config["whisper"]["task"] = os.environ["WHISPER_TASK"]
+# =============================================================================
+# 🏗️ 호환성 변수들 (Compatibility Variables)
+# =============================================================================
 
-    # MFA 설정
-    if "MFA_MODEL_NAME" in os.environ:
-        config["mfa"]["model_name"] = os.environ["MFA_MODEL_NAME"]
-    if "MFA_NUM_JOBS" in os.environ:
-        config["mfa"]["num_jobs"] = int(os.environ["MFA_NUM_JOBS"])
-    if "MFA_CLEAN" in os.environ:
-        config["mfa"]["clean"] = os.environ["MFA_CLEAN"].lower() == "true"
+# 기존 코드 호환성을 위한 변수들
+DEFAULT_CONFIG = CURRENT_CONFIG.copy()
+MAIN_CONFIG = CURRENT_CONFIG
 
-    # FAISS 설정
-    if "FAISS_DIMENSION" in os.environ:
-        config["faiss"]["dimension"] = int(os.environ["FAISS_DIMENSION"])
-    if "FAISS_INDEX_TYPE" in os.environ:
-        config["faiss"]["index_type"] = os.environ["FAISS_INDEX_TYPE"]
-
-    # Sentence Transformer 설정
-    if "SENTENCE_TRANSFORMER_MODEL_NAME" in os.environ:
-        config["sentence_transformer"]["model_name"] = os.environ[
-            "SENTENCE_TRANSFORMER_MODEL_NAME"
-        ]
-    if "SENTENCE_TRANSFORMER_BATCH_SIZE" in os.environ:
-        config["sentence_transformer"]["batch_size"] = int(
-            os.environ["SENTENCE_TRANSFORMER_BATCH_SIZE"]
-        )
-
-    # 시각화 설정
-    if "VISUALIZATION_DPI" in os.environ:
-        config["visualization"]["dpi"] = int(os.environ["VISUALIZATION_DPI"])
-    if "VISUALIZATION_FIGSIZE" in os.environ:
-        width, height = map(int, os.environ["VISUALIZATION_FIGSIZE"].split(","))
-        config["visualization"]["figsize"] = (width, height)
-
-    # 로깅 설정
-    if "LOG_LEVEL" in os.environ:
-        config["logging"]["level"] = os.environ["LOG_LEVEL"]
-    if "LOG_FORMAT" in os.environ:
-        config["logging"]["format"] = os.environ["LOG_FORMAT"]
-    if "LOG_DATE_FORMAT" in os.environ:
-        config["logging"]["date_format"] = os.environ["LOG_DATE_FORMAT"]
-
-    return config
-
-
-# 현재 설정 로드
-CURRENT_CONFIG = load_from_env()
-
-# 디렉토리 생성
+# 초기화
 create_directories()
-
-# export
-__all__ = ["CURRENT_CONFIG", "PATHS"]

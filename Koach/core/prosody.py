@@ -366,55 +366,58 @@ class ProsodyAnalyzer:
             return None
 
     def visualize_prosody(
-        self,
-        learner_audio: str,
-        reference_audio: str,
-        output_path: str
+        self, prosody_result: Dict[str, Any], output_path: str = None
     ) -> None:
-        """운율 시각화
-
-        Args:
-            learner_audio: 학습자 오디오 파일 경로
-            reference_audio: 원어민 오디오 파일 경로
-            output_path: 출력 파일 경로
-        """
+        """운율 분석 결과 시각화"""
         try:
-            # 오디오 분석
-            learner_result = self.analyze_audio(learner_audio)
-            reference_result = self.analyze_audio(reference_audio)
-            
-            if not learner_result or not reference_result:
+            # ✅ output_path가 None이면 기본 경로 사용하지 않고 에러 방지
+            if output_path is None:
+                logger.warning("시각화 출력 경로가 지정되지 않았습니다.")
                 return
 
-            # 시각화
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10))
-            
-            # 피치 시각화
-            time = np.linspace(0, len(learner_result["pitch"]["values"])/100, len(learner_result["pitch"]["values"]))
-            ax1.plot(time, learner_result["pitch"]["values"], label='Learner', alpha=0.7)
-            time_ref = np.linspace(0, len(reference_result["pitch"]["values"])/100, len(reference_result["pitch"]["values"]))
-            ax1.plot(time_ref, reference_result["pitch"]["values"], label='Reference', alpha=0.7)
-            ax1.set_title('Pitch Comparison')
-            ax1.set_xlabel('Time (s)')
-            ax1.set_ylabel('Pitch (Hz)')
-            ax1.legend()
-            
-            # 에너지 시각화
-            time = np.linspace(0, len(learner_result["energy"]["values"])/100, len(learner_result["energy"]["values"]))
-            ax2.plot(time, learner_result["energy"]["values"], label='Learner', alpha=0.7)
-            time_ref = np.linspace(0, len(reference_result["energy"]["values"])/100, len(reference_result["energy"]["values"]))
-            ax2.plot(time_ref, reference_result["energy"]["values"], label='Reference', alpha=0.7)
-            ax2.set_title('Energy Comparison')
-            ax2.set_xlabel('Time (s)')
-            ax2.set_ylabel('Energy')
-            ax2.legend()
-            
+            import matplotlib.pyplot as plt
+
+            fig, axes = plt.subplots(3, 1, figsize=(12, 10))
+
+            # 피치 분석 시각화
+            pitch_data = prosody_result.get("pitch", {})
+            if pitch_data:
+                pitch_contour = pitch_data.get("contour", [])
+                times = range(len(pitch_contour))
+                axes[0].plot(times, pitch_contour, label="Pitch")
+                axes[0].set_title("Pitch Analysis")
+                axes[0].set_ylabel("Frequency (Hz)")
+                axes[0].legend()
+
+            # 에너지 분석 시각화
+            energy_data = prosody_result.get("energy", {})
+            if energy_data:
+                energy_contour = energy_data.get("contour", [])
+                times = range(len(energy_contour))
+                axes[1].plot(times, energy_contour, label="Energy", color="orange")
+                axes[1].set_title("Energy Analysis")
+                axes[1].set_ylabel("Energy")
+                axes[1].legend()
+
+            # 타이밍 분석 시각화
+            timing_data = prosody_result.get("timing", {})
+            if timing_data:
+                durations = timing_data.get("segment_durations", [])
+                segments = range(len(durations))
+                axes[2].bar(segments, durations, label="Segment Duration", color="green")
+                axes[2].set_title("Timing Analysis")
+                axes[2].set_xlabel("Segments")
+                axes[2].set_ylabel("Duration (s)")
+                axes[2].legend()
+
             plt.tight_layout()
-            plt.savefig(output_path)
+            plt.savefig(output_path, dpi=300, bbox_inches="tight")
             plt.close()
 
+            logger.info(f"📈 운율 시각화 저장: {output_path}")
+
         except Exception as e:
-            logger.error(f"운율 시각화 중 오류가 발생했습니다: {str(e)}")
+            logger.error(f"운율 시각화 실패: {e}")
 
     def _analyze_pitch_segments(
         self,

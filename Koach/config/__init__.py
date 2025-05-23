@@ -1,3 +1,3 @@
-from .settings import DEFAULT_CONFIG
+from .settings import DEFAULT_CONFIG, CURRENT_CONFIG, PATHS
 
-__all__ = ["DEFAULT_CONFIG"]
+__all__ = ["DEFAULT_CONFIG", "CURRENT_CONFIG", "PATHS"]
