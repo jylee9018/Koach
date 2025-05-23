@@ -30,25 +30,27 @@
 ---
 
 ## 🏗️ 프로젝트 구조
-koach/
-├── main.py # 메인 실행 파일
-├── core/ # 핵심 분석 엔진
-│ ├── koach.py # 메인 분석 클래스
-│ ├── prosody.py # 억양 분석 모듈
-│ └── knowledge_base.py # RAG 지식베이스
-├── config/ # 설정 관리
-│ └── settings.py # 설정 파일
-├── utils/ # 유틸리티 함수
-│ ├── audio.py # 오디오 처리
-│ └── text.py # 텍스트/음성 정렬
-├── models/ # 사전 훈련 모델
-│ ├── korean_mfa.zip # 한국어 MFA 모델
-│ ├── korean_mfa.dict # 한국어 음성 사전
-│ └── whisper/ # Whisper 모델 캐시
-├── knowledge/ # RAG 지식베이스
-├── temp/ # 임시 파일
-└── README.md # 이 파일
 
+```
+koach/
+├── main.py                 # 메인 실행 파일
+├── core/                   # 핵심 분석 엔진
+│ ├── koach.py              # 메인 분석 클래스
+│ ├── prosody.py            # 억양 분석 모듈
+│ └── knowledge_base.py     # RAG 지식베이스
+├── config/ # 설정 관리
+│ └── settings.py           # 설정 파일
+├── utils/ # 유틸리티 함수
+│ ├── audio.py              # 오디오 처리
+│ └── text.py               # 텍스트/음성 정렬
+├── models/                 # 사전 훈련 모델
+│ ├── korean_mfa.zip        # 한국어 MFA 음성 모델
+│ ├── korean_mfa.dict       # 한국어 MFA 사전
+│ └── whisper/              # Whisper 모델 캐시
+├── knowledge/              # RAG 지식베이스
+├── temp/                   # 임시 파일 (중간 결과물 저장)
+└── README.md               # 이 파일
+```
 
 ---
 
@@ -170,15 +172,10 @@ print(f"AI 피드백: {result['feedback']}")
 
 ### 2. 생성되는 파일
 
-output/
-├── analysis_result.json # 상세 분석 결과
-├── phoneme_accuracy.png # 음소 정확도 차트
-├── pitch_comparison.png # 억양 비교 그래프
-├── waveform_comparison.png # 파형 비교
-└── textgrids/ # MFA 정렬 결과
-├── learner.TextGrid
-└── native.TextGrid
-
+```
+data/output/
+└── analysis_result.json     # 상세 분석 결과 (GPT 결과 포함)
+```
 
 ---
 
