@@ -255,6 +255,7 @@ class PromptTemplateManager:
         else:
             return PromptType.BASIC
 ```
+![프롬프트 결과](output_prompt.png)
 
 **성과**:
 - 토큰 사용량 **30% 절감** (450-550 → 300-400 토큰)
