@@ -1,6 +1,6 @@
 # 🎤 Koach - AI-Powered Korean Pronunciation Analysis System
 
-> **Portfolio Project: 복잡한 음성학적 분석을 교육적 피드백으로 변환하는 멀티모달 AI 시스템**
+> **복잡한 음성학적 분석을 교육적 피드백으로 변환하는 한국어 발음 교정 AI 시스템**
 
 ![시연](output.gif)
 
