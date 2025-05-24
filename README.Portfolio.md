@@ -80,11 +80,11 @@ flowchart TD
     A2[원어민 오디오] --> B2[오디오 전처리]
     A3[목표 스크립트] --> C1
     
-    B1 --> C1[STT: Whisper]
-    B2 --> C2[STT: Whisper]
+    B1 --> C1[STT - Whisper]
+    B2 --> C2[STT - Whisper]
     
-    C1 --> D1[음성과 텍스트를 음소 단위로 정렬: MFA(Montreal Forced Aligner)]
-    C2 --> D2[음성과 텍스트를 음소 단위로 정렬: MFA(Montreal Forced Aligner)]
+    C1 --> D1[음성과 텍스트를 음소 단위로 정렬 - MFA]
+    C2 --> D2[음성과 텍스트를 음소 단위로 정렬 - MFA]
     A3 --> D1
     A3 --> D2
     
